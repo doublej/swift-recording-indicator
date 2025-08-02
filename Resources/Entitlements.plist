@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Sandbox for security -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    
+    <!-- Network client for potential future features -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <!-- User selected files for config import -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    
+    <!-- Hardened runtime -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <false/>
+    
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+    
+    <key>com.apple.security.cs.disable-executable-page-protection</key>
+    <false/>
+    
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <false/>
+    
+    <!-- Restrict access to camera and microphone -->
+    <key>com.apple.security.device.camera</key>
+    <false/>
+    
+    <key>com.apple.security.device.microphone</key>
+    <false/>
+    
+    <!-- Allow accessibility for UI element detection -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>

@@ -1,0 +1,19 @@
+# Build artifacts
+.build/
+release/
+
+# Xcode
+*.xcworkspace
+*.xcuserdata
+*.xcscheme
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.log
