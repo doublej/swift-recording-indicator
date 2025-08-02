@@ -179,6 +179,41 @@ final class SecurityValidator {
         return truncated.replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
     }
+    
+    // MARK: - Enhanced JSON Structure Validation
+    
+    private static func validateJSONStructure(_ data: Data) throws {
+        guard let json = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
+            throw TranscriptionIndicatorError.invalidCommand("Invalid JSON structure")
+        }
+        
+        var keyCount = 0
+        try validateDepth(json, currentDepth: 0, keyCount: &keyCount)
+        
+        guard keyCount <= maxTotalKeys else {
+            throw TranscriptionIndicatorError.invalidCommand("Too many keys in JSON")
+        }
+    }
+    
+    private static func validateDepth(_ object: Any, currentDepth: Int, keyCount: inout Int) throws {
+        guard currentDepth <= maxNestingDepth else {
+            throw TranscriptionIndicatorError.invalidCommand("JSON nesting too deep")
+        }
+        
+        if let dict = object as? [String: Any] {
+            keyCount += dict.count
+            for value in dict.values {
+                try validateDepth(value, currentDepth: currentDepth + 1, keyCount: &keyCount)
+            }
+        } else if let array = object as? [Any] {
+            guard array.count <= maxArrayLength else {
+                throw TranscriptionIndicatorError.invalidCommand("Array too long")
+            }
+            for value in array {
+                try validateDepth(value, currentDepth: currentDepth + 1, keyCount: &keyCount)
+            }
+        }
+    }
 }
 
 private final class RateLimiter {

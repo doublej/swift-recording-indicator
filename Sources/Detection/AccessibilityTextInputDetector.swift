@@ -3,6 +3,7 @@ import ApplicationServices
 import CoreGraphics
 import Logging
 import OSLog
+import QuartzCore
 
 actor AccessibilityTextInputDetector: TextInputDetecting {
     private let logger = Logger(label: "accessibility.detector")
