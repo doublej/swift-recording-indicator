@@ -13,6 +13,8 @@ actor CommandProcessor: CommandProcessing {
     
     private var currentConfig: IndicatorConfig = .default
     private var isIndicatorVisible = false
+    private var isInitialized = false
+    private var initializationContinuation: CheckedContinuation<Void, Never>?
     
     init(configManager: ConfigurationManaging) {
         self.configManager = configManager
@@ -26,9 +28,28 @@ actor CommandProcessor: CommandProcessing {
     func setDependencies(detector: TextInputDetecting, renderer: IndicatorRendering) async {
         self.detector = detector
         self.renderer = renderer
+        self.isInitialized = true
+        
+        // Resume any waiting process calls
+        initializationContinuation?.resume()
+        initializationContinuation = nil
+        
+        logger.info("Dependencies initialized successfully")
     }
     
     func process(_ command: Command) async throws -> CommandResponse {
+        // Wait for initialization if not already initialized
+        if !isInitialized {
+            logger.debug("Waiting for dependencies to initialize before processing command: \(command.id)")
+            await withCheckedContinuation { continuation in
+                if isInitialized {
+                    continuation.resume()
+                } else {
+                    initializationContinuation = continuation
+                }
+            }
+        }
+        
         let signpostID = OSSignpostID(log: signpostLogger)
         os_signpost(.begin, log: signpostLogger, name: "ProcessCommand", signpostID: signpostID, 
                    "Command: %{public}s", command.command)

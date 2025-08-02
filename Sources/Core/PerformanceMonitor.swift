@@ -3,7 +3,7 @@ import OSLog
 import Logging
 import QuartzCore
 
-final class PerformanceMonitor {
+final class PerformanceMonitor: @unchecked Sendable {
     static let shared = PerformanceMonitor()
     
     private let logger = Logger(label: "performance.monitor")

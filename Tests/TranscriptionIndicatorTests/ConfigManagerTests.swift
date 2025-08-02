@@ -37,10 +37,8 @@ final class ConfigManagerTests: XCTestCase {
     }
     
     func testConfigurationSaveAndLoad() throws {
-        var config = AppConfiguration.default
-        
-        // Modify some values
-        config.indicator = IndicatorConfig(
+        // Create modified configuration using initializer
+        let modifiedIndicator = IndicatorConfig(
             v: 1,
             mode: .cursor,
             visibility: .forceOn,
@@ -54,6 +52,12 @@ final class ConfigManagerTests: XCTestCase {
             animations: .default,
             health: .default,
             exitOnIdle: true
+        )
+        
+        let config = AppConfiguration(
+            indicator: modifiedIndicator,
+            logging: .default,
+            performance: .default
         )
         
         // Save the configuration
@@ -76,10 +80,8 @@ final class ConfigManagerTests: XCTestCase {
     }
     
     func testConfigurationValidation() {
-        var config = AppConfiguration.default
-        
         // Create invalid configuration
-        config.indicator = IndicatorConfig(
+        let invalidIndicator = IndicatorConfig(
             v: 1,
             mode: .caret,
             visibility: .auto,
@@ -93,6 +95,12 @@ final class ConfigManagerTests: XCTestCase {
             animations: .default,
             health: .default,
             exitOnIdle: false
+        )
+        
+        let config = AppConfiguration(
+            indicator: invalidIndicator,
+            logging: .default,
+            performance: .default
         )
         
         XCTAssertThrowsError(try configManager.save(config)) { error in
@@ -115,8 +123,7 @@ final class ConfigManagerTests: XCTestCase {
         XCTAssertNotNil(exportedJSON.data(using: .utf8))
         
         // Modify and save different configuration
-        var modifiedConfig = originalConfig
-        modifiedConfig.indicator = IndicatorConfig(
+        let modifiedIndicator = IndicatorConfig(
             v: 1,
             mode: .cursor,
             visibility: .auto,
@@ -130,6 +137,12 @@ final class ConfigManagerTests: XCTestCase {
             animations: .default,
             health: .default,
             exitOnIdle: false
+        )
+        
+        let modifiedConfig = AppConfiguration(
+            indicator: modifiedIndicator,
+            logging: .default,
+            performance: .default
         )
         try configManager.save(modifiedConfig)
         
@@ -145,8 +158,7 @@ final class ConfigManagerTests: XCTestCase {
     
     func testResetToDefaults() throws {
         // Save a custom configuration
-        var customConfig = AppConfiguration.default
-        customConfig.indicator = IndicatorConfig(
+        let customIndicator = IndicatorConfig(
             v: 1,
             mode: .cursor,
             visibility: .auto,
@@ -160,6 +172,12 @@ final class ConfigManagerTests: XCTestCase {
             animations: .default,
             health: .default,
             exitOnIdle: false
+        )
+        
+        let customConfig = AppConfiguration(
+            indicator: customIndicator,
+            logging: .default,
+            performance: .default
         )
         try configManager.save(customConfig)
         
@@ -185,8 +203,12 @@ final class ConfigManagerTests: XCTestCase {
     }
     
     func testLoggingConfigValidation() {
-        var config = AppConfiguration.default
-        config.logging = LoggingConfig(level: "invalid_level", enableSignposts: true)
+        let invalidLogging = LoggingConfig(level: "invalid_level", enableSignposts: true)
+        let config = AppConfiguration(
+            indicator: .default,
+            logging: invalidLogging,
+            performance: .default
+        )
         
         XCTAssertThrowsError(try configManager.validate(config)) { error in
             if case TranscriptionIndicatorError.invalidConfig(let field, _) = error {
@@ -198,11 +220,16 @@ final class ConfigManagerTests: XCTestCase {
     }
     
     func testPerformanceConfigValidation() {
-        var config = AppConfiguration.default
-        config.performance = PerformanceConfig(
+        let invalidPerformance = PerformanceConfig(
             enableMemoryMonitoring: true,
             memoryCheckInterval: 0, // Invalid
             maxMemoryUsage: 50 * 1024 * 1024
+        )
+        
+        let config = AppConfiguration(
+            indicator: .default,
+            logging: .default,
+            performance: invalidPerformance
         )
         
         XCTAssertThrowsError(try configManager.validate(config)) { error in

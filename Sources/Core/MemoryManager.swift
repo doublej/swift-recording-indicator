@@ -3,7 +3,7 @@ import OSLog
 import Logging
 
 /// Centralized memory management and monitoring
-final class MemoryManager {
+final class MemoryManager: @unchecked Sendable {
     static let shared = MemoryManager()
     
     private let logger = Logger(label: "memory.manager")
@@ -103,10 +103,6 @@ struct TemporaryAllocation {
     }
     
     static func performAsync<T>(_ block: () async throws -> T) async rethrows -> T {
-        try await Task {
-            try autoreleasepool {
-                try await block()
-            }
-        }.value
+        return try await block()
     }
 }

@@ -1,7 +1,6 @@
 import Foundation
 
-@MainActor
-final class ServiceContainer {
+final class ServiceContainer: @unchecked Sendable {
     static let shared = ServiceContainer()
     
     private var services: [ObjectIdentifier: Any] = [:]

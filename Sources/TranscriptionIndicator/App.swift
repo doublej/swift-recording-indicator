@@ -68,14 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let communicationHandler = serviceContainer.resolve(CommunicationHandling.self)
         let processor = serviceContainer.resolve(CommandProcessing.self)
         
-        Task {
-            await processor.setDependencies(detector: detector, renderer: renderer)
-        }
-        
         appCoordinator = AppCoordinator(
             detector: detector,
             renderer: renderer,
-            communicationHandler: communicationHandler
+            communicationHandler: communicationHandler,
+            processor: processor
         )
     }
     
@@ -150,20 +147,26 @@ final class AppCoordinator: ObservableObject {
     private let detector: TextInputDetecting
     private let renderer: IndicatorRendering
     private let communicationHandler: CommunicationHandling
+    private let processor: CommandProcessing
     
     @Published private(set) var isActive = false
     @Published private(set) var currentConfig: IndicatorConfig?
     
     private var monitoringTask: Task<Void, Never>?
     
-    init(detector: TextInputDetecting, renderer: IndicatorRendering, communicationHandler: CommunicationHandling) {
+    init(detector: TextInputDetecting, renderer: IndicatorRendering, communicationHandler: CommunicationHandling, processor: CommandProcessing) {
         self.detector = detector
         self.renderer = renderer
         self.communicationHandler = communicationHandler
+        self.processor = processor
     }
     
     func start() async throws {
         logger.info("Starting app coordinator")
+        
+        // Initialize dependencies before starting communication
+        await processor.setDependencies(detector: detector, renderer: renderer)
+        logger.debug("Command processor dependencies initialized")
         
         try await communicationHandler.startListening()
         

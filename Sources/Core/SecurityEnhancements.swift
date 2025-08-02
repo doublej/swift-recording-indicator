@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 import OSLog
 import ApplicationServices
+import AppKit
 
 // MARK: - Enhanced Security Validator
 
@@ -254,8 +255,14 @@ final class RuntimeIntegrityChecker {
     }
     
     private func verifyCodeSignature() throws {
+        var code: SecCode?
         var staticCode: SecStaticCode?
-        let code = SecCodeSelf()
+        
+        // Get reference to self
+        guard SecCodeCopySelf([], &code) == errSecSuccess,
+              let code = code else {
+            throw TranscriptionIndicatorError.internalError("Failed to get self code reference")
+        }
         
         guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess,
               let staticCode = staticCode else {
@@ -340,12 +347,14 @@ final class SecureAccessibilityWrapper {
         expectedType: T.Type
     ) async -> T? {
         return await withCheckedContinuation { continuation in
-            accessQueue.async {
+            // Capture element safely for async context
+            let capturedElement = element
+            accessQueue.async { [capturedElement] in
                 var value: CFTypeRef?
-                let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+                let result = AXUIElementCopyAttributeValue(capturedElement, attribute, &value)
                 
                 // Audit log
-                self.logAccessibilityAccess(element: element, attribute: attribute, success: result == .success)
+                self.logAccessibilityAccess(element: capturedElement, attribute: attribute, success: result == .success)
                 
                 guard result == .success, let value = value else {
                     continuation.resume(returning: nil)
