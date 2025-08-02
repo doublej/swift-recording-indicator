@@ -27,11 +27,13 @@ final class PerformanceMonitor {
     private var totalEventCount: Int = 0
     
     private init() {
+        // Setup memory monitoring timer first
+        self.memoryMonitorTimer = DispatchSource.makeTimerSource(queue: measurementQueue)
+        
+        // Now we can safely call methods
         self.memoryBaseline = getCurrentMemoryUsage()
         self.peakMemoryUsage = memoryBaseline
         
-        // Setup memory monitoring timer
-        self.memoryMonitorTimer = DispatchSource.makeTimerSource(queue: measurementQueue)
         memoryMonitorTimer.schedule(deadline: .now(), repeating: .seconds(5))
         memoryMonitorTimer.setEventHandler { [weak self] in
             self?.monitorMemoryUsage()

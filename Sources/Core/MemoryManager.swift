@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import Logging
 
 /// Centralized memory management and monitoring
 final class MemoryManager {

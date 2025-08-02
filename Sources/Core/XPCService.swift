@@ -1,5 +1,7 @@
 import Foundation
 import OSLog
+import Logging
+import AppKit
 
 // MARK: - XPC Protocol Definition
 
@@ -357,7 +359,7 @@ public final class TranscriptionIndicatorXPCClient {
         connection.resume()
     }
     
-    public func showIndicator(config: IndicatorConfig) async throws {
+    func showIndicator(config: IndicatorConfig) async throws {
         let configData = try JSONEncoder().encode(config)
         
         return try await withCheckedThrowingContinuation { continuation in
@@ -377,7 +379,7 @@ public final class TranscriptionIndicatorXPCClient {
         }
     }
     
-    public func hideIndicator() async throws {
+    func hideIndicator() async throws {
         return try await withCheckedThrowingContinuation { continuation in
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
                 continuation.resume(throwing: error)
@@ -395,7 +397,7 @@ public final class TranscriptionIndicatorXPCClient {
         }
     }
     
-    public func updateConfig(_ config: IndicatorConfig) async throws {
+    func updateConfig(_ config: IndicatorConfig) async throws {
         let configData = try JSONEncoder().encode(config)
         
         return try await withCheckedThrowingContinuation { continuation in
@@ -415,7 +417,7 @@ public final class TranscriptionIndicatorXPCClient {
         }
     }
     
-    public func getHealth() async throws -> HealthResponse {
+    func getHealth() async throws -> HealthResponse {
         return try await withCheckedThrowingContinuation { continuation in
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
                 continuation.resume(throwing: error)

@@ -1,6 +1,7 @@
 import QuartzCore
 import AppKit
 import OSLog
+import Logging
 
 /// Efficient layer cache for reusing Core Animation layers
 @MainActor

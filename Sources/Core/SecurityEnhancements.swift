@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import OSLog
+import ApplicationServices
 
 // MARK: - Enhanced Security Validator
 
@@ -376,9 +377,9 @@ final class SecureAccessibilityWrapper {
     }
     
     func isDefinitelySecureField(_ element: AXUIElement) async -> Bool {
-        // Layer 1: Check subrole
-        if let subrole = await getAttributeSecure(from: element, attribute: kAXSubroleAttribute, expectedType: String.self),
-           subrole == kAXSecureTextFieldSubrole {
+        // Layer 1: Check subrole (using string literals as constants may not be available)
+        if let subrole = await getAttributeSecure(from: element, attribute: "AXSubrole" as CFString, expectedType: String.self),
+           subrole == "AXSecureTextField" {
             return true
         }
         
@@ -389,11 +390,11 @@ final class SecureAccessibilityWrapper {
         }
         
         // Layer 3: Check parent context
-        if let parent = await getAttributeSecure(from: element, attribute: kAXParentAttribute, expectedType: AXUIElement.self),
-           let parentRole = await getAttributeSecure(from: parent, attribute: kAXRoleAttribute, expectedType: String.self),
-           parentRole == kAXSheetRole || parentRole == kAXWindowRole {
+        if let parent = await getAttributeSecure(from: element, attribute: "AXParent" as CFString, expectedType: AXUIElement.self),
+           let parentRole = await getAttributeSecure(from: parent, attribute: "AXRole" as CFString, expectedType: String.self),
+           parentRole == "AXSheet" || parentRole == "AXWindow" {
             
-            if let title = await getAttributeSecure(from: parent, attribute: kAXTitleAttribute, expectedType: String.self) {
+            if let title = await getAttributeSecure(from: parent, attribute: "AXTitle" as CFString, expectedType: String.self) {
                 let secureKeywords = ["password", "passcode", "pin", "secret", "private", "secure", "auth", "login", "credential"]
                 let lowercaseTitle = title.lowercased()
                 
@@ -404,10 +405,16 @@ final class SecureAccessibilityWrapper {
         }
         
         // Layer 4: Check value pattern (all bullets/asterisks)
-        if let value = await getAttributeSecure(from: element, attribute: kAXValueAttribute, expectedType: String.self),
-           !value.isEmpty,
-           value.allSatisfy({ $0 == "•" || $0 == "*" || $0 == "●" }) {
-            return true
+        if let value = await getAttributeSecure(from: element, attribute: "AXValue" as CFString, expectedType: String.self),
+           !value.isEmpty {
+            // Break down the complex expression to avoid type-checking timeout
+            let isBullet = value.allSatisfy { $0 == "•" }
+            let isAsterisk = value.allSatisfy { $0 == "*" }
+            let isCircle = value.allSatisfy { $0 == "●" }
+            
+            if isBullet || isAsterisk || isCircle {
+                return true
+            }
         }
         
         return false
@@ -441,6 +448,6 @@ final class SecurityEventMonitor {
     }
     
     func recordSecurityEvent(event: String, severity: OSLogType = .info) {
-        os_log(severity, log: logger, "Security event: %{public}@", event)
+        logger.log(level: .info, "Security event: \(event, privacy: .public)")
     }
 }

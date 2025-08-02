@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import Logging
 
 /// Efficient event coalescer that batches rapid events to reduce processing overhead
 actor EventCoalescer<Event> {

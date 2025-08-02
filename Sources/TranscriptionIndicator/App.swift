@@ -52,7 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Configure for background operation
         if #available(macOS 13.0, *) {
-            NSApplication.shared.yieldActivation(toApplicationWithBundleIdentifier: nil)
+            // LSUIElement apps don't need to yield activation to other apps
+            // This method requires a valid bundle identifier string
         }
         
         setupMemoryPressureHandling()

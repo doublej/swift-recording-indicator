@@ -59,8 +59,7 @@ final class IndicatorWindow: NSPanel {
         self.displaysWhenScreenProfileChanges = true
         self.allowsToolTipsWhenApplicationIsInactive = false
         
-        // Optimize window backing for performance
-        self.preferredBackingLocation = .videoMemory
+        // Optimize window backing for performance (preferredBackingLocation deprecated in macOS 10.14)
         self.colorSpace = .genericRGB
         
         // Accessibility and focus behavior
@@ -306,7 +305,7 @@ final class IndicatorWindow: NSPanel {
                     context.duration = 0.2
                     context.allowsImplicitAnimation = true
                     self.alphaValue = 1.0
-                } completionHandler: {
+                } completionHandler: { [weak self] in
                     self?.orderFront(nil)
                 }
             }
