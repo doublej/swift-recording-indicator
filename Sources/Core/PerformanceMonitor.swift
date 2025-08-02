@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import Logging
+import QuartzCore
 
 final class PerformanceMonitor {
     static let shared = PerformanceMonitor()
@@ -12,7 +13,31 @@ final class PerformanceMonitor {
     private var measurements: [String: [TimeInterval]] = [:]
     private let measurementQueue = DispatchQueue(label: "performance.measurements", attributes: .concurrent)
     
-    private init() {}
+    // Memory monitoring
+    private var memoryBaseline: UInt64 = 0
+    private var peakMemoryUsage: UInt64 = 0
+    private let memoryMonitorTimer: DispatchSourceTimer
+    
+    // Frame timing for animations
+    private var lastFrameTime: CFTimeInterval = 0
+    private var frameDropCount: Int = 0
+    
+    // Event coalescing metrics
+    private var coalescedEventCount: Int = 0
+    private var totalEventCount: Int = 0
+    
+    private init() {
+        self.memoryBaseline = getCurrentMemoryUsage()
+        self.peakMemoryUsage = memoryBaseline
+        
+        // Setup memory monitoring timer
+        self.memoryMonitorTimer = DispatchSource.makeTimerSource(queue: measurementQueue)
+        memoryMonitorTimer.schedule(deadline: .now(), repeating: .seconds(5))
+        memoryMonitorTimer.setEventHandler { [weak self] in
+            self?.monitorMemoryUsage()
+        }
+        memoryMonitorTimer.resume()
+    }
     
     func enable() {
         isEnabled = true
@@ -146,11 +171,32 @@ final class PerformanceMonitor {
         var output = "TranscriptionIndicator Performance Statistics\n"
         output += "Generated: \(Date())\n\n"
         
+        // Memory statistics
+        let currentMemory = getCurrentMemoryUsage()
+        let memoryDelta = currentMemory > memoryBaseline ? currentMemory - memoryBaseline : 0
+        output += "Memory Usage:\n"
+        output += "  Current: \(formatBytes(currentMemory))\n"
+        output += "  Baseline: \(formatBytes(memoryBaseline))\n"
+        output += "  Delta: \(formatBytes(memoryDelta))\n"
+        output += "  Peak: \(formatBytes(peakMemoryUsage))\n\n"
+        
+        // Event coalescing statistics
+        let coalescingRate = totalEventCount > 0 ? Double(coalescedEventCount) / Double(totalEventCount) * 100 : 0
+        output += "Event Coalescing:\n"
+        output += "  Total Events: \(totalEventCount)\n"
+        output += "  Coalesced: \(coalescedEventCount)\n"
+        output += "  Coalescing Rate: \(String(format: "%.1f", coalescingRate))%\n\n"
+        
+        // Frame drops
+        output += "Animation Performance:\n"
+        output += "  Frame Drops: \(frameDropCount)\n\n"
+        
         if stats.isEmpty {
-            output += "No performance data available.\n"
+            output += "No timing data available.\n"
             return output
         }
         
+        output += "Timing Statistics:\n"
         output += String(format: "%-20s %8s %8s %8s %8s %8s %8s %8s\n",
                         "Operation", "Count", "Avg(ms)", "Min(ms)", "Max(ms)", "Med(ms)", "P95(ms)", "P99(ms)")
         output += String(repeating: "-", count: 88) + "\n"
@@ -195,6 +241,63 @@ final class PerformanceMonitor {
     func endAnimationMeasurement() {
         guard isEnabled else { return }
         os_signpost(.end, log: signpostLogger, name: "Animation")
+    }
+    
+    // Memory monitoring helpers
+    private func getCurrentMemoryUsage() -> UInt64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+        
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        
+        return result == KERN_SUCCESS ? info.resident_size : 0
+    }
+    
+    private func monitorMemoryUsage() {
+        let currentUsage = getCurrentMemoryUsage()
+        peakMemoryUsage = max(peakMemoryUsage, currentUsage)
+        
+        let delta = currentUsage > memoryBaseline ? currentUsage - memoryBaseline : 0
+        if delta > 10 * 1024 * 1024 { // 10MB increase
+            logger.warning("Memory usage increased by \(formatBytes(delta))")
+        }
+    }
+    
+    private func formatBytes(_ bytes: UInt64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useAll]
+        formatter.countStyle = .memory
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+    
+    // Frame timing helpers
+    func recordFrameTime() {
+        let currentTime = CACurrentMediaTime()
+        if lastFrameTime > 0 {
+            let frameDuration = currentTime - lastFrameTime
+            if frameDuration > 0.0167 { // More than 16.7ms (60fps threshold)
+                frameDropCount += 1
+            }
+        }
+        lastFrameTime = currentTime
+    }
+    
+    // Event coalescing metrics
+    func recordEvent(coalesced: Bool) {
+        measurementQueue.async(flags: .barrier) {
+            self.totalEventCount += 1
+            if coalesced {
+                self.coalescedEventCount += 1
+            }
+        }
+    }
+    
+    deinit {
+        memoryMonitorTimer.cancel()
     }
 }
 

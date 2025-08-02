@@ -59,6 +59,10 @@ final class IndicatorWindow: NSPanel {
         self.displaysWhenScreenProfileChanges = true
         self.allowsToolTipsWhenApplicationIsInactive = false
         
+        // Optimize window backing for performance
+        self.preferredBackingLocation = .videoMemory
+        self.colorSpace = .genericRGB
+        
         // Accessibility and focus behavior
         self.canBecomeVisibleWithoutLogin = false
         self.preventsApplicationTerminationWhenModal = false

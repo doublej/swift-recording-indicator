@@ -11,6 +11,10 @@ final class IndicatorView: NSView {
     private var animationController: AnimationController?
     private var currentConfig: IndicatorConfig?
     
+    // Layer pool for different shapes
+    private var layerPool: [IndicatorConfig.Shape: CAShapeLayer] = [:]
+    private var pathCache: [String: CGPath] = [:]
+    
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupView()
@@ -73,13 +77,28 @@ final class IndicatorView: NSView {
     }
     
     private func createShapeLayer(for config: IndicatorConfig) {
-        let newLayer = CAShapeLayer()
-        newLayer.frame = bounds
-        
-        layer?.addSublayer(newLayer)
-        shapeLayer = newLayer
-        
-        logger.debug("Shape layer created for shape: \(config.shape.rawValue)")
+        // Try to reuse existing layer for this shape
+        if let existingLayer = layerPool[config.shape] {
+            // Remove from pool and reuse
+            shapeLayer = existingLayer
+            layer?.addSublayer(existingLayer)
+            logger.debug("Reused shape layer for shape: \(config.shape.rawValue)")
+        } else {
+            // Create new layer
+            let newLayer = CAShapeLayer()
+            newLayer.frame = bounds
+            newLayer.contentsScale = layer?.contentsScale ?? 2.0
+            
+            // Configure for optimal performance
+            newLayer.shouldRasterize = true
+            newLayer.rasterizationScale = layer?.contentsScale ?? 2.0
+            newLayer.drawsAsynchronously = true
+            
+            layer?.addSublayer(newLayer)
+            shapeLayer = newLayer
+            
+            logger.debug("Created new shape layer for shape: \(config.shape.rawValue)")
+        }
     }
     
     private func updateShapeLayer(with config: IndicatorConfig) {
@@ -90,21 +109,39 @@ final class IndicatorView: NSView {
         
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        CATransaction.setAnimationDuration(0) // Ensure no implicit animations
         
-        shapeLayer.bounds = bounds
-        shapeLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        // Only update if bounds changed
+        if shapeLayer.bounds != bounds {
+            shapeLayer.bounds = bounds
+            shapeLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
         
-        let path = createPath(for: config.shape, size: size)
-        shapeLayer.path = path
+        // Use cached path or create new one
+        let pathKey = "\(config.shape.rawValue)_\(size)"
+        let path: CGPath
+        if let cachedPath = pathCache[pathKey] {
+            path = cachedPath
+        } else {
+            path = createPath(for: config.shape, size: size)
+            pathCache[pathKey] = path
+        }
+        
+        // Only update path if different
+        if !CFEqual(shapeLayer.path, path) {
+            shapeLayer.path = path
+        }
         
         let primaryColor = parseColor(config.colors.primary, alpha: config.colors.alphaPrimary)
-        shapeLayer.fillColor = primaryColor.cgColor
         
         if config.shape == .ring {
             shapeLayer.fillColor = NSColor.clear.cgColor
             let secondaryColor = parseColor(config.colors.secondary, alpha: config.colors.alphaSecondary)
             shapeLayer.strokeColor = secondaryColor.cgColor
             shapeLayer.lineWidth = size * 0.1
+        } else {
+            shapeLayer.fillColor = primaryColor.cgColor
+            shapeLayer.strokeColor = nil
         }
         
         shapeLayer.opacity = Float(config.opacity)
@@ -169,12 +206,29 @@ final class IndicatorView: NSView {
         if let shapeLayer = shapeLayer, let config = currentConfig {
             let size = config.size
             let bounds = CGRect(x: 0, y: 0, width: size, height: size)
+            let newPosition = CGPoint(x: self.bounds.midX, y: self.bounds.midY)
             
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            shapeLayer.bounds = bounds
-            shapeLayer.position = CGPoint(x: self.bounds.midX, y: self.bounds.midY)
-            CATransaction.commit()
+            // Only update if actually changed
+            if shapeLayer.bounds != bounds || shapeLayer.position != newPosition {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                shapeLayer.bounds = bounds
+                shapeLayer.position = newPosition
+                CATransaction.commit()
+            }
         }
+    }
+    
+    deinit {
+        // Return current layer to pool if possible
+        if let layer = shapeLayer, let config = currentConfig {
+            layer.removeFromSuperlayer()
+            layer.removeAllAnimations()
+            layerPool[config.shape] = layer
+        }
+        
+        // Clear caches
+        pathCache.removeAll()
+        logger.debug("IndicatorView deinitialized")
     }
 }

@@ -12,6 +12,13 @@ actor StdinStdoutHandler: CommunicationHandling {
     private var stdinTask: Task<Void, Never>?
     private let securityValidator = SecurityValidator()
     
+    // Response buffer for batching
+    private var responseBuffer: [CommandResponse] = []
+    private var responseTimer: DispatchSourceTimer?
+    private let responseQueue = DispatchQueue(label: "response.queue", qos: .userInteractive)
+    private let maxBufferSize = 10
+    private let bufferFlushDelay: TimeInterval = 0.001 // 1ms
+    
     init(processor: CommandProcessing) {
         self.processor = processor
     }
@@ -35,25 +42,63 @@ actor StdinStdoutHandler: CommunicationHandling {
     }
     
     func sendResponse(_ response: CommandResponse) async throws {
+        // Add to buffer
+        responseBuffer.append(response)
+        
+        // Flush immediately if buffer is full or this is a high-priority response
+        if responseBuffer.count >= maxBufferSize || response.status == "error" {
+            await flushResponseBuffer()
+        } else {
+            // Schedule flush
+            scheduleResponseFlush()
+        }
+    }
+    
+    private func scheduleResponseFlush() {
+        responseTimer?.cancel()
+        
+        let timer = DispatchSource.makeTimerSource(queue: responseQueue)
+        timer.schedule(deadline: .now() + bufferFlushDelay)
+        timer.setEventHandler { [weak self] in
+            Task {
+                await self?.flushResponseBuffer()
+            }
+        }
+        timer.resume()
+        responseTimer = timer
+    }
+    
+    private func flushResponseBuffer() async {
+        guard !responseBuffer.isEmpty else { return }
+        
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         
-        do {
-            let data = try encoder.encode(response)
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print(jsonString, terminator: "\n")
-                fflush(stdout)
-                
-                logger.debug("Sent response: \(SecurityValidator.sanitizeForLogging(jsonString))")
+        let responses = responseBuffer
+        responseBuffer.removeAll()
+        
+        // Send all buffered responses
+        for response in responses {
+            do {
+                let data = try encoder.encode(response)
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print(jsonString, terminator: "\n")
+                }
+            } catch {
+                logger.error("Failed to encode response: \(error.localizedDescription)")
             }
-        } catch {
-            logger.error("Failed to encode response: \(error.localizedDescription)")
-            throw TranscriptionIndicatorError.communicationFailure("Failed to encode response")
         }
+        
+        fflush(stdout)
+        logger.debug("Flushed \(responses.count) responses")
     }
     
     private func handleStdinInput() async {
         let stdin = FileHandle.standardInput
+        
+        // Set stdin to non-blocking mode for better performance
+        var flags = fcntl(stdin.fileDescriptor, F_GETFL)
+        fcntl(stdin.fileDescriptor, F_SETFL, flags | O_NONBLOCK)
         
         do {
             for try await line in stdin.bytes.lines {
@@ -62,7 +107,10 @@ actor StdinStdoutHandler: CommunicationHandling {
                 let signpostID = OSSignpostID(log: signpostLogger)
                 os_signpost(.begin, log: signpostLogger, name: "ProcessCommand", signpostID: signpostID)
                 
-                await processInputLine(line)
+                // Process in parallel for better throughput
+                Task {
+                    await processInputLine(line)
+                }
                 
                 os_signpost(.end, log: signpostLogger, name: "ProcessCommand", signpostID: signpostID)
             }

@@ -9,6 +9,11 @@ final class SecurityValidator {
     private static let supportedVersions = [1]
     private static let allowedCommands = Set(Command.CommandType.allCases.map(\.rawValue))
     
+    // Enhanced validation limits
+    private static let maxNestingDepth = 5
+    private static let maxTotalKeys = 50
+    private static let maxArrayLength = 100
+    
     private var rateLimiter = RateLimiter(maxRequests: 100, timeWindow: 60.0)
     
     static func validateCommand(_ input: String) throws -> Command {
@@ -16,9 +21,15 @@ final class SecurityValidator {
             throw TranscriptionIndicatorError.invalidCommand("Command too long")
         }
         
-        guard let data = input.data(using: .utf8) else {
+        // Normalize Unicode before processing
+        let normalizedInput = input.precomposedStringWithCanonicalMapping
+        
+        guard let data = normalizedInput.data(using: .utf8) else {
             throw TranscriptionIndicatorError.invalidCommand("Invalid UTF-8 encoding")
         }
+        
+        // Validate JSON structure before decoding
+        try validateJSONStructure(data)
         
         let decoder = JSONDecoder()
         let command: Command
