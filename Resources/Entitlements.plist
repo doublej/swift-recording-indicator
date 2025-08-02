@@ -2,19 +2,33 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Sandbox for security -->
+    <!-- App Sandbox for security isolation -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
     
-    <!-- Network client for potential future features -->
+    <!-- Network access for potential logging/telemetry (minimal) -->
     <key>com.apple.security.network.client</key>
-    <true/>
+    <false/>
     
-    <!-- User selected files for config import -->
+    <!-- File access permissions -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
     
-    <!-- Hardened runtime -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <false/>
+    
+    <!-- Accessibility entitlements for UI element detection -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+    
+    <!-- Required for accessing system-wide UI elements -->
+    <key>com.apple.security.temporary-exception.apple-events</key>
+    <array>
+        <string>com.apple.systemevents</string>
+        <string>com.apple.finder</string>
+    </array>
+    
+    <!-- Hardened Runtime security -->
     <key>com.apple.security.cs.allow-jit</key>
     <false/>
     
@@ -27,15 +41,61 @@
     <key>com.apple.security.cs.disable-library-validation</key>
     <false/>
     
-    <!-- Restrict access to camera and microphone -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <false/>
+    
+    <!-- Device access restrictions -->
     <key>com.apple.security.device.camera</key>
     <false/>
     
     <key>com.apple.security.device.microphone</key>
     <false/>
     
-    <!-- Allow accessibility for UI element detection -->
-    <key>com.apple.security.automation.apple-events</key>
-    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <false/>
+    
+    <key>com.apple.security.device.bluetooth</key>
+    <false/>
+    
+    <key>com.apple.security.device.usb</key>
+    <false/>
+    
+    <!-- Print restrictions -->
+    <key>com.apple.security.print</key>
+    <false/>
+    
+    <!-- Personal Information Manager restrictions -->
+    <key>com.apple.security.personal-information.addressbook</key>
+    <false/>
+    
+    <key>com.apple.security.personal-information.calendars</key>
+    <false/>
+    
+    <key>com.apple.security.personal-information.location</key>
+    <false/>
+    
+    <key>com.apple.security.personal-information.photos-library</key>
+    <false/>
+    
+    <!-- Application data restrictions -->
+    <key>com.apple.security.application-groups</key>
+    <array/>
+    
+    <!-- Scripting restrictions for security -->
+    <key>com.apple.security.scripting-targets</key>
+    <dict>
+        <key>com.apple.systemevents</key>
+        <array>
+            <string>com.apple.events.appleevents</string>
+        </array>
+    </dict>
+    
+    <!-- Memory and resource protections -->
+    <key>com.apple.security.inherit</key>
+    <false/>
+    
+    <!-- Background execution -->
+    <key>com.apple.developer.background-execution</key>
+    <false/>
 </dict>
 </plist>

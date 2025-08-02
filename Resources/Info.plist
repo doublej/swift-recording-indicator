@@ -2,6 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Bundle Identification -->
     <key>CFBundleIdentifier</key>
     <string>com.transcription.indicator</string>
     
@@ -23,32 +24,83 @@
     <key>CFBundleExecutable</key>
     <string>TranscriptionIndicator</string>
     
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    
+    <!-- Application Category for App Store and Spotlight -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    
     <!-- LSUIElement for background operation -->
     <key>LSUIElement</key>
     <true/>
     
-    <!-- Accessibility usage description -->
-    <key>NSAccessibilityUsageDescription</key>
-    <string>TranscriptionIndicator needs accessibility access to detect text input fields and position the visual indicator accurately. No text content is read or stored.</string>
+    <!-- Background modes and execution policy -->
+    <key>LSBackgroundOnly</key>
+    <false/>
     
-    <!-- Minimum macOS version -->
+    <!-- System version requirements -->
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     
-    <!-- Hardened runtime compatibility -->
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <false/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <false/>
-    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-    <false/>
+    <key>LSRequiresNativeExecution</key>
+    <true/>
     
-    <!-- Prevent automatic termination -->
+    <!-- Privacy and permissions -->
+    <key>NSAccessibilityUsageDescription</key>
+    <string>TranscriptionIndicator needs accessibility access to detect text input fields and position the visual indicator accurately. No text content is read or stored.</string>
+    
+    <!-- High resolution support -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    
+    <!-- Application lifecycle -->
     <key>NSSupportsAutomaticTermination</key>
     <false/>
     
-    <!-- Prevent sudden termination -->
     <key>NSSupportsSuddenTermination</key>
+    <false/>
+    
+    <!-- Main nib file is not required for programmatic apps -->
+    <key>NSMainNibFile</key>
+    <string></string>
+    
+    <!-- Services and menu bar -->
+    <key>NSServices</key>
+    <array/>
+    
+    <!-- Document types - none for this utility -->
+    <key>CFBundleDocumentTypes</key>
+    <array/>
+    
+    <!-- URL schemes - none for this utility -->
+    <key>CFBundleURLTypes</key>
+    <array/>
+    
+    <!-- Hardened Runtime configuration -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <false/>
+    
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+    
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <false/>
+    
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <false/>
+    
+    <key>com.apple.security.cs.disable-executable-page-protection</key>
+    <false/>
+    
+    <!-- Notarization and distribution -->
+    <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
 </dict>
 </plist>

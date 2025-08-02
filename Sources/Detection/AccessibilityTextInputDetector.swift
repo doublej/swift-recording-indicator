@@ -20,6 +20,24 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     private var lastNotificationTime: CFAbsoluteTime = 0
     private let notificationThrottle: CFAbsoluteTime = 0.016 // ~60fps
     
+    // Event coalescing with adaptive timing
+    private var pendingNotification: (element: AXUIElement, notification: CFString)?
+    private var coalescingTimer: DispatchSourceTimer?
+    private let coalescingDelay: TimeInterval = 0.016 // 16ms base delay
+    private var adaptiveDelay: TimeInterval = 0.016
+    private var consecutiveNotifications = 0
+    
+    // Multi-level cache for performance
+    private var elementAttributeCache = [AXUIElement: [String: CFTypeRef]]()
+    private var elementRoleCache = [AXUIElement: String]()
+    private var secureFieldCache = [AXUIElement: Bool]()
+    private var cacheValidUntil: CFAbsoluteTime = 0
+    private let cacheLifetime: CFAbsoluteTime = 0.5 // 500ms cache
+    
+    // Performance monitoring
+    private var averageProcessingTime: CFAbsoluteTime = 0
+    private var processingTimeCount = 0
+    
     private let detectionQueue = DispatchQueue(label: "accessibility.detection", qos: .userInteractive)
     
     init() {
@@ -87,12 +105,24 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     
     private func checkPermissions() async -> Bool {
         await MainActor.run {
+            // First check if accessibility is enabled system-wide
+            let accessibilityEnabled = AXAPIEnabled()
+            if !accessibilityEnabled {
+                logger.error("Accessibility API is disabled system-wide")
+                showSystemAccessibilityGuidance()
+                return false
+            }
+            
+            // Check if our process is trusted
             let trusted = AXIsProcessTrusted()
             if !trusted {
-                logger.error("Accessibility permission not granted")
+                logger.error("Accessibility permission not granted for this application")
                 showPermissionGuidance()
+                return false
             }
-            return trusted
+            
+            logger.info("Accessibility permissions verified successfully")
+            return true
         }
     }
     
@@ -100,9 +130,47 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     private func showPermissionGuidance() {
         let alert = NSAlert()
         alert.messageText = "Accessibility Permission Required"
-        alert.informativeText = "TranscriptionIndicator needs accessibility access to detect text input fields. Please grant permission in System Preferences > Security & Privacy > Privacy > Accessibility."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Open System Preferences")
+        alert.informativeText = """
+        TranscriptionIndicator needs accessibility access to detect text input fields and position the visual indicator accurately.
+
+        Steps to grant permission:
+        1. Open System Settings (or System Preferences)
+        2. Go to Privacy & Security → Accessibility
+        3. Enable TranscriptionIndicator
+
+        No text content is read or stored by this application.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Cancel")
+        
+        if alert.runModal() == .alertFirstButtonReturn {
+            // Try modern System Settings first (macOS 13+), fallback to System Preferences
+            let modernURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+            let legacyURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+            
+            if !NSWorkspace.shared.open(modernURL) {
+                NSWorkspace.shared.open(legacyURL)
+            }
+        }
+    }
+    
+    @MainActor
+    private func showSystemAccessibilityGuidance() {
+        let alert = NSAlert()
+        alert.messageText = "Accessibility API Disabled"
+        alert.informativeText = """
+        The system-wide Accessibility API is disabled. This is required for TranscriptionIndicator to function.
+
+        To enable:
+        1. Open System Settings (or System Preferences)
+        2. Go to Privacy & Security → Accessibility
+        3. Enable "Enable access for assistive devices"
+
+        You may need administrator privileges to change this setting.
+        """
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
         
         if alert.runModal() == .alertFirstButtonReturn {
@@ -168,25 +236,39 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
             os_signpost(.end, log: signpostLogger, name: "HandleNotification", signpostID: signpostID)
         }
         
-        let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastNotificationTime > notificationThrottle else {
-            return
-        }
-        lastNotificationTime = now
+        // Event coalescing - store the latest notification
+        pendingNotification = (element, notification)
         
-        await detectionQueue.async { [weak self] in
+        // Cancel existing timer
+        coalescingTimer?.cancel()
+        
+        // Create new timer for coalesced processing
+        let timer = DispatchSource.makeTimerSource(queue: detectionQueue)
+        timer.schedule(deadline: .now() + coalescingDelay)
+        timer.setEventHandler { [weak self] in
             guard let self = self else { return }
-            
             Task {
-                await self.processNotification(element: element, notification: notification)
+                if let pending = await self.pendingNotification {
+                    await self.processNotification(element: pending.element, notification: pending.notification)
+                    await self.clearPendingNotification()
+                }
             }
         }
+        timer.resume()
+        coalescingTimer = timer
+        
+        PerformanceMonitor.shared.recordEvent(coalesced: pendingNotification != nil)
     }
     
     private func processNotification(element: AXUIElement, notification: CFString) async {
         guard isDetecting else { return }
         
+        let measureStart = CFAbsoluteTimeGetCurrent()
+        
         do {
+            // Clear cache if expired using optimized method
+            clearCacheIfExpired()
+            
             if await isTextInputElement(element) && !(await isSecureField(element)) {
                 if let caretRect = await extractCaretRect(from: element) {
                     if caretRect != lastCaretRect {
@@ -204,15 +286,37 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
                     logger.debug("Text input lost")
                 }
             }
+            
+            let processingTime = CFAbsoluteTimeGetCurrent() - measureStart
+            updatePerformanceMetrics(processingTime: processingTime)
+            
+            if processingTime > 0.008 { // 8ms threshold for warnings
+                logger.warning("Slow notification processing: \(String(format: "%.2f", processingTime * 1000))ms")
+            }
         } catch {
             logger.error("Error processing notification: \(error.localizedDescription)")
         }
     }
     
     private func isTextInputElement(_ element: AXUIElement) async -> Bool {
+        // Check cache first
+        if let cachedRole = elementRoleCache[element] {
+            let textRoles = [
+                kAXTextFieldRole,
+                kAXTextAreaRole,
+                kAXComboBoxRole,
+                kAXStaticTextRole
+            ]
+            return textRoles.contains(cachedRole)
+        }
+        
+        // Get role from accessibility API
         guard let role = await getElementAttribute(element, kAXRoleAttribute) as? String else {
             return false
         }
+        
+        // Cache the result
+        elementRoleCache[element] = role
         
         let textRoles = [
             kAXTextFieldRole,
@@ -225,11 +329,20 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     }
     
     private func isSecureField(_ element: AXUIElement) async -> Bool {
+        // Check cache first
+        if let cached = secureFieldCache[element] {
+            return cached
+        }
+        
+        // Get subrole from accessibility API
         guard let subrole = await getElementAttribute(element, kAXSubroleAttribute) as? String else {
+            secureFieldCache[element] = false
             return false
         }
         
-        return subrole == kAXSecureTextFieldSubrole
+        let isSecure = subrole == kAXSecureTextFieldSubrole
+        secureFieldCache[element] = isSecure
+        return isSecure
     }
     
     private func extractCaretRect(from element: AXUIElement) async -> CGRect? {
@@ -291,12 +404,27 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     }
     
     private func getElementAttribute(_ element: AXUIElement, _ attribute: CFString) async -> CFTypeRef? {
+        // Check cache first
+        let cacheKey = String(describing: attribute)
+        if let cached = elementAttributeCache[element]?[cacheKey],
+           CFAbsoluteTimeGetCurrent() < cacheValidUntil {
+            return cached
+        }
+        
         return await withCheckedContinuation { continuation in
-            detectionQueue.async {
+            detectionQueue.async { [weak self] in
                 var value: CFTypeRef?
                 let result = AXUIElementCopyAttributeValue(element, attribute, &value)
                 
                 if result == .success {
+                    // Cache the result
+                    if let self = self {
+                        if self.elementAttributeCache[element] == nil {
+                            self.elementAttributeCache[element] = [:]
+                        }
+                        self.elementAttributeCache[element]?[cacheKey] = value
+                        self.cacheValidUntil = CFAbsoluteTimeGetCurrent() + self.cacheLifetime
+                    }
                     continuation.resume(returning: value)
                 } else {
                     continuation.resume(returning: nil)
@@ -305,7 +433,41 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
         }
     }
     
+    private func clearPendingNotification() async {
+        pendingNotification = nil
+    }
+    
+    private func clearCacheIfExpired() {
+        let now = CFAbsoluteTimeGetCurrent()
+        if now > cacheValidUntil {
+            elementAttributeCache.removeAll()
+            elementRoleCache.removeAll()
+            secureFieldCache.removeAll()
+            cacheValidUntil = now + cacheLifetime
+            logger.debug("Cleared expired accessibility caches")
+        }
+    }
+    
+    private func updatePerformanceMetrics(processingTime: CFAbsoluteTime) {
+        processingTimeCount += 1
+        averageProcessingTime = ((averageProcessingTime * Double(processingTimeCount - 1)) + processingTime) / Double(processingTimeCount)
+        
+        // Adaptive delay adjustment based on processing time
+        if averageProcessingTime > 0.008 { // 8ms threshold
+            adaptiveDelay = min(0.032, adaptiveDelay * 1.1) // Increase delay
+        } else if averageProcessingTime < 0.004 { // 4ms threshold
+            adaptiveDelay = max(0.008, adaptiveDelay * 0.9) // Decrease delay
+        }
+        
+        // Log performance metrics periodically
+        if processingTimeCount % 100 == 0 {
+            logger.debug("AX performance: avg \(String(format: "%.2f", averageProcessingTime * 1000))ms, adaptive delay: \(String(format: "%.1f", adaptiveDelay * 1000))ms")
+        }
+    }
+    
     deinit {
+        coalescingTimer?.cancel()
         caretRectContinuation.finish()
+        logger.info("AccessibilityTextInputDetector deinitialized - processed \(processingTimeCount) notifications")
     }
 }

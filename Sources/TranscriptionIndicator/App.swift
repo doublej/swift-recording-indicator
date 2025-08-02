@@ -40,11 +40,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func setupApplication() {
+        // Set activation policy for LSUIElement app
         NSApplication.shared.setActivationPolicy(.prohibited)
         NSApplication.shared.disableRelaunchOnLogin()
         
-        // Prevent automatic termination
+        // Prevent automatic termination while the app is active
         ProcessInfo.processInfo.disableAutomaticTermination("TranscriptionIndicator is running")
+        
+        // Ensure app doesn't appear in Force Quit dialog
+        NSApplication.shared.disableRelaunchOnLogin()
+        
+        // Configure for background operation
+        if #available(macOS 13.0, *) {
+            NSApplication.shared.yieldActivation(toApplicationWithBundleIdentifier: nil)
+        }
         
         setupMemoryPressureHandling()
         setupSystemNotifications()
