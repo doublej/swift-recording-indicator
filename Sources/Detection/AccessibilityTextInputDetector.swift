@@ -1,6 +1,6 @@
 import Foundation
-import ApplicationServices
-import CoreGraphics
+@preconcurrency import ApplicationServices
+@preconcurrency import CoreGraphics
 import Logging
 import OSLog
 import QuartzCore
@@ -192,7 +192,7 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
                 
                 let detector = Unmanaged<AccessibilityTextInputDetector>.fromOpaque(userData).takeUnretainedValue()
                 
-                Task {
+                Task { @MainActor in
                     await detector.handleAccessibilityNotification(element: element, notification: notification)
                 }
             }, &observer)
@@ -207,7 +207,6 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
             
             Task { @MainActor in
                 do {
-                    
                     CFRunLoopAddSource(
                         CFRunLoopGetMain(),
                         AXObserverGetRunLoopSource(axObserver),
@@ -215,11 +214,15 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
                     )
                     
                     let systemElement = AXUIElementCreateSystemWide()
+                    
+                    // Get unmanaged reference on MainActor to ensure proper isolation
+                    let unmanagedSelf = Unmanaged.passUnretained(self).toOpaque()
+                    
                     let addResult = AXObserverAddNotification(
                         axObserver,
                         systemElement,
                         kAXFocusedUIElementChangedNotification as CFString,
-                        Unmanaged.passUnretained(self).toOpaque()
+                        unmanagedSelf
                     )
                     
                     guard addResult == .success else {
@@ -254,16 +257,20 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
             Task {
-                if let pending = await self.pendingNotification {
-                    await self.processNotification(element: pending.element, notification: pending.notification)
-                    await self.clearPendingNotification()
-                }
+                await self.processCoalescedNotification()
             }
         }
         timer.resume()
         coalescingTimer = timer
         
         PerformanceMonitor.shared.recordEvent(coalesced: pendingNotification != nil)
+    }
+    
+    private func processCoalescedNotification() async {
+        if let pending = pendingNotification {
+            await processNotification(element: pending.element, notification: pending.notification)
+            pendingNotification = nil
+        }
     }
     
     private func processNotification(element: AXUIElement, notification: CFString) async {
@@ -430,18 +437,14 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
         }
         
         return await withCheckedContinuation { continuation in
-            detectionQueue.async { [weak self] in
+            detectionQueue.async {
                 var value: CFTypeRef?
                 let result = AXUIElementCopyAttributeValue(element, attribute, &value)
                 
                 if result == .success {
-                    // Cache the result
-                    if let self = self {
-                        if self.elementAttributeCache[element] == nil {
-                            self.elementAttributeCache[element] = [:]
-                        }
-                        self.elementAttributeCache[element]?[cacheKey] = value
-                        self.cacheValidUntil = CFAbsoluteTimeGetCurrent() + self.cacheLifetime
+                    // Update cache asynchronously on the actor
+                    Task {
+                        await self.updateCache(element: element, attribute: cacheKey, value: value)
                     }
                     continuation.resume(returning: value)
                 } else {
@@ -451,8 +454,12 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
         }
     }
     
-    private func clearPendingNotification() async {
-        pendingNotification = nil
+    private func updateCache(element: AXUIElement, attribute: String, value: CFTypeRef?) async {
+        if elementAttributeCache[element] == nil {
+            elementAttributeCache[element] = [:]
+        }
+        elementAttributeCache[element]?[attribute] = value
+        cacheValidUntil = CFAbsoluteTimeGetCurrent() + cacheLifetime
     }
     
     private func clearCacheIfExpired() {

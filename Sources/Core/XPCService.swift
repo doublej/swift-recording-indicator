@@ -8,10 +8,10 @@ import Darwin
 // MARK: - XPC Protocol Definition
 
 @objc protocol TranscriptionIndicatorXPCProtocol {
-    func showIndicator(configData: Data, reply: @escaping (Bool, Error?) -> Void)
-    func hideIndicator(reply: @escaping (Bool, Error?) -> Void)
-    func updateConfig(configData: Data, reply: @escaping (Bool, Error?) -> Void)
-    func getHealth(reply: @escaping (Data?, Error?) -> Void)
+    func showIndicator(configData: Data, reply: @escaping @Sendable (Bool, Error?) -> Void)
+    func hideIndicator(reply: @escaping @Sendable (Bool, Error?) -> Void)
+    func updateConfig(configData: Data, reply: @escaping @Sendable (Bool, Error?) -> Void)
+    func getHealth(reply: @escaping @Sendable (Data?, Error?) -> Void)
 }
 
 // MARK: - XPC Service Implementation
@@ -65,9 +65,7 @@ final class TranscriptionIndicatorXPCService: NSObject, NSXPCListenerDelegate, @
         }
         
         // Add to active connections
-        connectionQueue.async(flags: .barrier) {
-            self.activeConnections.insert(newConnection)
-        }
+        addConnection(newConnection)
         
         newConnection.resume()
         
@@ -148,9 +146,15 @@ final class TranscriptionIndicatorXPCService: NSObject, NSXPCListenerDelegate, @
     
     // MARK: - Connection Management
     
+    private func addConnection(_ connection: NSXPCConnection) {
+        let _ = connectionQueue.sync(flags: .barrier) {
+            self.activeConnections.insert(connection)
+        }
+    }
+    
     private func removeConnection(_ connection: NSXPCConnection) {
-        connectionQueue.async(flags: .barrier) {
-            self.activeConnections.remove(connection)
+        connectionQueue.async(flags: .barrier) { [weak self] in
+            self?.activeConnections.remove(connection)
         }
     }
     
@@ -178,7 +182,7 @@ final class TranscriptionIndicatorXPCServiceHandler: NSObject, TranscriptionIndi
         super.init()
     }
     
-    func showIndicator(configData: Data, reply: @escaping (Bool, Error?) -> Void) {
+    func showIndicator(configData: Data, reply: @escaping @Sendable (Bool, Error?) -> Void) {
         logger.info("Received showIndicator request")
         
         Task {
@@ -220,7 +224,7 @@ final class TranscriptionIndicatorXPCServiceHandler: NSObject, TranscriptionIndi
         }
     }
     
-    func hideIndicator(reply: @escaping (Bool, Error?) -> Void) {
+    func hideIndicator(reply: @escaping @Sendable (Bool, Error?) -> Void) {
         logger.info("Received hideIndicator request")
         
         Task {
@@ -252,7 +256,7 @@ final class TranscriptionIndicatorXPCServiceHandler: NSObject, TranscriptionIndi
         }
     }
     
-    func updateConfig(configData: Data, reply: @escaping (Bool, Error?) -> Void) {
+    func updateConfig(configData: Data, reply: @escaping @Sendable (Bool, Error?) -> Void) {
         logger.info("Received updateConfig request")
         
         Task {
@@ -289,7 +293,7 @@ final class TranscriptionIndicatorXPCServiceHandler: NSObject, TranscriptionIndi
         }
     }
     
-    func getHealth(reply: @escaping (Data?, Error?) -> Void) {
+    func getHealth(reply: @escaping @Sendable (Data?, Error?) -> Void) {
         logger.info("Received getHealth request")
         
         Task {

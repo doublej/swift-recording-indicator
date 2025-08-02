@@ -3,7 +3,7 @@ import OSLog
 import Logging
 
 /// Efficient event coalescer that batches rapid events to reduce processing overhead
-actor EventCoalescer<Event> {
+actor EventCoalescer<Event: Sendable> {
     private let logger = Logger(label: "event.coalescer")
     private let signpostLogger = OSLog(subsystem: "com.transcription.indicator", category: "coalescing")
     
@@ -11,7 +11,7 @@ actor EventCoalescer<Event> {
     private var coalescingTimer: DispatchSourceTimer?
     private let coalescingDelay: TimeInterval
     private let queue: DispatchQueue
-    private let processor: (Event) async -> Void
+    private let processor: @Sendable (Event) async -> Void
     
     private var eventCount = 0
     private var coalescedCount = 0
@@ -19,7 +19,7 @@ actor EventCoalescer<Event> {
     init(
         delay: TimeInterval = 0.016, // 16ms default
         queue: DispatchQueue = .init(label: "event.coalescer", qos: .userInteractive),
-        processor: @escaping (Event) async -> Void
+        processor: @escaping @Sendable (Event) async -> Void
     ) {
         self.coalescingDelay = delay
         self.queue = queue
@@ -91,7 +91,7 @@ actor RectCoalescer {
     init(
         delay: TimeInterval = 0.016,
         tolerance: CGFloat = 0.5,
-        processor: @escaping (CGRect) async -> Void
+        processor: @escaping @Sendable (CGRect) async -> Void
     ) {
         self.tolerance = tolerance
         self.coalescer = EventCoalescer(delay: delay, processor: processor)

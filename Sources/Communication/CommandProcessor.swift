@@ -2,6 +2,7 @@ import Foundation
 import Logging
 import OSLog
 
+// Alternative approach: Lazy initialization with timeout
 actor CommandProcessor: CommandProcessing {
     private let logger = Logger(label: "command.processor")
     private let signpostLogger = OSLog(subsystem: "com.transcription.indicator", category: "commands")
@@ -13,8 +14,12 @@ actor CommandProcessor: CommandProcessing {
     
     private var currentConfig: IndicatorConfig = .default
     private var isIndicatorVisible = false
+    
+    // Initialization state management
     private var isInitialized = false
-    private var initializationContinuation: CheckedContinuation<Void, Never>?
+    private let initializationTimeout: TimeInterval = 5.0 // 5 second timeout
+    private var pendingCommands: [Command] = []
+    private let maxPendingCommands = 100
     
     init(configManager: ConfigurationManaging) {
         self.configManager = configManager
@@ -30,24 +35,48 @@ actor CommandProcessor: CommandProcessing {
         self.renderer = renderer
         self.isInitialized = true
         
-        // Resume any waiting process calls
-        initializationContinuation?.resume()
-        initializationContinuation = nil
+        logger.info("Dependencies initialized, processing \(pendingCommands.count) pending commands")
         
-        logger.info("Dependencies initialized successfully")
+        // Process any pending commands
+        for command in pendingCommands {
+            Task {
+                do {
+                    _ = try await self.process(command)
+                } catch {
+                    logger.error("Failed to process pending command \(command.id): \(error)")
+                }
+            }
+        }
+        pendingCommands.removeAll()
     }
     
     func process(_ command: Command) async throws -> CommandResponse {
-        // Wait for initialization if not already initialized
+        // If not initialized, either wait or queue the command
         if !isInitialized {
-            logger.debug("Waiting for dependencies to initialize before processing command: \(command.id)")
-            await withCheckedContinuation { continuation in
-                if isInitialized {
-                    continuation.resume()
-                } else {
-                    initializationContinuation = continuation
-                }
+            logger.debug("Dependencies not ready, handling command: \(command.id)")
+            
+            // For critical commands like health checks, process without dependencies
+            if command.command == Command.CommandType.health.rawValue {
+                return await handleHealthWithoutDependencies(command)
             }
+            
+            // Queue non-critical commands with size limit
+            if pendingCommands.count < maxPendingCommands {
+                pendingCommands.append(command)
+                logger.debug("Queued command \(command.id), queue size: \(pendingCommands.count)")
+                return CommandResponse.success(id: command.id, message: "Command queued for processing")
+            } else {
+                throw TranscriptionIndicatorError.internalError("Command queue full, dependencies not initialized")
+            }
+        }
+        
+        // Normal processing with dependencies available
+        return try await processWithDependencies(command)
+    }
+    
+    private func processWithDependencies(_ command: Command) async throws -> CommandResponse {
+        guard let detector = detector, let renderer = renderer else {
+            throw TranscriptionIndicatorError.internalError("Dependencies lost after initialization")
         }
         
         let signpostID = OSSignpostID(log: signpostLogger)
@@ -64,13 +93,13 @@ actor CommandProcessor: CommandProcessing {
         
         switch command.command {
         case Command.CommandType.show.rawValue:
-            response = try await handleShow(command)
+            response = try await handleShow(command, detector: detector, renderer: renderer)
         case Command.CommandType.hide.rawValue:
-            response = await handleHide(command)
+            response = await handleHide(command, detector: detector, renderer: renderer)
         case Command.CommandType.health.rawValue:
             response = await handleHealth(command)
         case Command.CommandType.config.rawValue:
-            response = try await handleConfig(command)
+            response = try await handleConfig(command, renderer: renderer)
         default:
             throw TranscriptionIndicatorError.invalidCommand("Unknown command: \(command.command)")
         }
@@ -79,11 +108,13 @@ actor CommandProcessor: CommandProcessing {
         return response
     }
     
-    private func handleShow(_ command: Command) async throws -> CommandResponse {
-        guard let detector = detector, let renderer = renderer else {
-            throw TranscriptionIndicatorError.internalError("Dependencies not initialized")
-        }
-        
+    private func handleHealthWithoutDependencies(_ command: Command) async -> CommandResponse {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        return CommandResponse.health(id: command.id, pid: Int(pid))
+    }
+    
+    // Updated handler methods with explicit dependency parameters
+    private func handleShow(_ command: Command, detector: TextInputDetecting, renderer: IndicatorRendering) async throws -> CommandResponse {
         if let config = command.config {
             try SecurityValidator.validateConfig(config)
             currentConfig = config
@@ -98,7 +129,7 @@ actor CommandProcessor: CommandProcessing {
             await healthMonitor.startMonitoring(interval: currentConfig.health.interval)
             
             Task {
-                await monitorCaretChanges()
+                await monitorCaretChanges(detector: detector, renderer: renderer)
             }
         } else {
             await renderer.updateConfig(currentConfig)
@@ -107,8 +138,8 @@ actor CommandProcessor: CommandProcessing {
         return CommandResponse.success(id: command.id, message: "Indicator shown")
     }
     
-    private func handleHide(_ command: Command) async -> CommandResponse {
-        if isIndicatorVisible, let detector = detector, let renderer = renderer {
+    private func handleHide(_ command: Command, detector: TextInputDetecting, renderer: IndicatorRendering) async -> CommandResponse {
+        if isIndicatorVisible {
             await detector.stopDetection()
             await renderer.hide()
             await healthMonitor.stopMonitoring()
@@ -123,7 +154,7 @@ actor CommandProcessor: CommandProcessing {
         return CommandResponse.health(id: command.id, pid: Int(pid))
     }
     
-    private func handleConfig(_ command: Command) async throws -> CommandResponse {
+    private func handleConfig(_ command: Command, renderer: IndicatorRendering) async throws -> CommandResponse {
         guard let newConfig = command.config else {
             throw TranscriptionIndicatorError.invalidConfig(field: "config", reason: "Missing configuration")
         }
@@ -135,7 +166,7 @@ actor CommandProcessor: CommandProcessing {
         
         try saveConfig()
         
-        if isIndicatorVisible, let renderer = renderer {
+        if isIndicatorVisible {
             await renderer.updateConfig(currentConfig)
             
             if oldConfig.health.interval != currentConfig.health.interval {
@@ -147,9 +178,7 @@ actor CommandProcessor: CommandProcessing {
         return CommandResponse.success(id: command.id, message: "Configuration updated")
     }
     
-    private func monitorCaretChanges() async {
-        guard let detector = detector, let renderer = renderer else { return }
-        
+    private func monitorCaretChanges(detector: TextInputDetecting, renderer: IndicatorRendering) async {
         for await caretRect in await detector.caretRectPublisher {
             guard isIndicatorVisible else { break }
             

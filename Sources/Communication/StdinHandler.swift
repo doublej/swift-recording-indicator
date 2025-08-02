@@ -96,9 +96,9 @@ actor StdinStdoutHandler: CommunicationHandling {
     private func handleStdinInput() async {
         let stdin = FileHandle.standardInput
         
-        // Set stdin to non-blocking mode for better performance
-        var flags = fcntl(stdin.fileDescriptor, F_GETFL)
-        fcntl(stdin.fileDescriptor, F_SETFL, flags | O_NONBLOCK)
+        // Remove non-blocking mode to fix resource unavailable error
+        let flags = fcntl(stdin.fileDescriptor, F_GETFL)
+        let _ = fcntl(stdin.fileDescriptor, F_SETFL, flags & ~O_NONBLOCK)
         
         do {
             for try await line in stdin.bytes.lines {

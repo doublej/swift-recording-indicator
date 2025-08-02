@@ -212,8 +212,10 @@ final class AnimationController {
     }
     
     deinit {
-        // Clear animation pool
-        animationPool.removeAll()
+        // Clear animation pool on main actor since animationPool is main actor isolated
+        Task { @MainActor in
+            animationPool.removeAll()
+        }
     }
     
     private func stateString(_ state: AnimationState) -> String {
@@ -229,7 +231,7 @@ final class AnimationController {
 extension CAAnimationGroup {
     var completion: ((Bool) -> Void)? {
         get {
-            return delegate as? (Bool) -> Void
+            return (delegate as? AnimationDelegate)?.completion
         }
         set {
             delegate = newValue.map(AnimationDelegate.init)
@@ -238,7 +240,7 @@ extension CAAnimationGroup {
 }
 
 private final class AnimationDelegate: NSObject, CAAnimationDelegate {
-    private let completion: (Bool) -> Void
+    let completion: (Bool) -> Void
     
     init(completion: @escaping (Bool) -> Void) {
         self.completion = completion
