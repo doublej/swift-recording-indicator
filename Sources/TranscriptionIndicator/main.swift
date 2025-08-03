@@ -59,13 +59,14 @@ if arguments.contains("--help") {
         --check-permissions Check accessibility permissions
     
     Communication:
-        Commands are read from stdin as newline-delimited JSON.
-        Responses are written to stdout as newline-delimited JSON.
+        Commands are read from stdin as simple text lines.
+        Responses are written to stdout as simple text lines.
     
     Example commands:
-        {"id":"1","v":1,"command":"show","config":{"shape":"circle","size":20}}
-        {"id":"2","v":1,"command":"hide"}
-        {"id":"3","v":1,"command":"health"}
+        show
+        hide
+        health
+        show 100
     """)
     exit(0)
 }

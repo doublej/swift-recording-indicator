@@ -9,8 +9,6 @@ final class SimpleCommandProcessor {
     private var window: NSWindow?
     private var isVisible = false
     private var currentShape: ShapeType = .circle
-    private var animationController: AnimationController?
-    private let animationConfig: AnimationConfig = .default
     
     func processCommand(_ line: String) async -> String {
         let command = line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

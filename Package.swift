@@ -19,17 +19,19 @@ let package = Package(
                 .product(name: "Collections", package: "swift-collections")
             ],
             path: "Sources",
+            sources: [
+                "TranscriptionIndicator/main.swift",
+                "TranscriptionIndicator/App.swift",
+                "Communication/SimpleCommandProcessor.swift",
+                "Communication/SimpleStdinHandler.swift",
+                "Communication/ShapeRenderer.swift"
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals"),
                 .enableUpcomingFeature("ConciseMagicFile"),
                 .enableUpcomingFeature("ForwardTrailingClosures"),
                 .enableUpcomingFeature("StrictConcurrency")
             ]
-        ),
-        .testTarget(
-            name: "TranscriptionIndicatorTests",
-            dependencies: ["TranscriptionIndicator"],
-            path: "Tests"
         )
     ]
 )

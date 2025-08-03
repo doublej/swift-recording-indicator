@@ -1,42 +1,36 @@
-import AppKit
 import Foundation
-import Logging
+import AppKit
 import OSLog
+import Logging
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let logger = Logger(label: "app.delegate")
-    private let signpostLogger = OSLog(subsystem: "com.transcription.indicator", category: "lifecycle")
-    
-    private var appCoordinator: AppCoordinator?
-    private var serviceContainer = ServiceContainer.shared
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let signpostID = OSSignpostID(log: signpostLogger)
-        os_signpost(.begin, log: signpostLogger, name: "AppLaunch", signpostID: signpostID)
-        
         logger.info("TranscriptionIndicator starting...")
         
         setupApplication()
-        setupServices()
-        startApplication()
-        
-        os_signpost(.end, log: signpostLogger, name: "AppLaunch", signpostID: signpostID)
+        startSimpleApplication()
         
         logger.info("TranscriptionIndicator ready")
     }
     
     func applicationWillTerminate(_ notification: Notification) {
         logger.info("TranscriptionIndicator terminating...")
-        
-        Task {
-            await appCoordinator?.shutdown()
-        }
     }
     
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         logger.info("Termination requested")
         return .terminateNow
+    }
+    
+    private func startSimpleApplication() {
+        Task { @MainActor in
+            let enhancedProcessor = EnhancedCommandProcessor()
+            let stdinHandler = SimpleStdinHandler(processor: enhancedProcessor)
+            await stdinHandler.startListening()
+        }
     }
     
     private func setupApplication() {
@@ -46,175 +40,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Prevent automatic termination while the app is active
         ProcessInfo.processInfo.disableAutomaticTermination("TranscriptionIndicator is running")
-        
-        // Ensure app doesn't appear in Force Quit dialog
-        NSApplication.shared.disableRelaunchOnLogin()
-        
-        // Configure for background operation
-        if #available(macOS 13.0, *) {
-            // LSUIElement apps don't need to yield activation to other apps
-            // This method requires a valid bundle identifier string
-        }
-        
-        setupMemoryPressureHandling()
-        setupSystemNotifications()
-    }
-    
-    private func setupServices() {
-        serviceContainer.registerServices()
-        
-        let detector = serviceContainer.resolve(TextInputDetecting.self)
-        let renderer = serviceContainer.resolve(IndicatorRendering.self)
-        let communicationHandler = serviceContainer.resolve(CommunicationHandling.self)
-        let processor = serviceContainer.resolve(CommandProcessing.self)
-        
-        appCoordinator = AppCoordinator(
-            detector: detector,
-            renderer: renderer,
-            communicationHandler: communicationHandler,
-            processor: processor
-        )
-    }
-    
-    private func startApplication() {
-        Task {
-            do {
-                try await appCoordinator?.start()
-            } catch {
-                logger.error("Failed to start application: \(error.localizedDescription)")
-                NSApplication.shared.terminate(nil)
-            }
-        }
-    }
-    
-    private func setupMemoryPressureHandling() {
-        let memoryPressureSource = DispatchSource.makeMemoryPressureSource(
-            eventMask: [.warning, .critical],
-            queue: .main
-        )
-        
-        memoryPressureSource.setEventHandler { [weak self] in
-            let event = memoryPressureSource.mask
-            if event.contains(.critical) {
-                self?.handleMemoryPressure()
-            }
-        }
-        
-        memoryPressureSource.resume()
-    }
-    
-    private func setupSystemNotifications() {
-        let notificationCenter = NSWorkspace.shared.notificationCenter
-        
-        notificationCenter.addObserver(
-            forName: NSWorkspace.willSleepNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.logger.info("System going to sleep")
-            Task {
-                await self?.appCoordinator?.handleSystemSleep()
-            }
-        }
-        
-        notificationCenter.addObserver(
-            forName: NSWorkspace.didWakeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.logger.info("System woke up")
-            Task {
-                await self?.appCoordinator?.handleSystemWake()
-            }
-        }
-    }
-    
-    private func handleMemoryPressure() {
-        logger.warning("Memory pressure detected")
-        
-        URLCache.shared.removeAllCachedResponses()
-        
-        Task {
-            await appCoordinator?.handleMemoryPressure()
-        }
-    }
-}
-
-@MainActor
-final class AppCoordinator: ObservableObject {
-    private let logger = Logger(label: "app.coordinator")
-    
-    private let detector: TextInputDetecting
-    private let renderer: IndicatorRendering
-    private let communicationHandler: CommunicationHandling
-    private let processor: CommandProcessing
-    
-    @Published private(set) var isActive = false
-    @Published private(set) var currentConfig: IndicatorConfig?
-    
-    private var monitoringTask: Task<Void, Never>?
-    
-    init(detector: TextInputDetecting, renderer: IndicatorRendering, communicationHandler: CommunicationHandling, processor: CommandProcessing) {
-        self.detector = detector
-        self.renderer = renderer
-        self.communicationHandler = communicationHandler
-        self.processor = processor
-    }
-    
-    func start() async throws {
-        logger.info("Starting app coordinator")
-        
-        // Initialize dependencies before starting communication
-        await processor.setDependencies(detector: detector, renderer: renderer)
-        logger.debug("Command processor dependencies initialized")
-        
-        try await communicationHandler.startListening()
-        
-        monitoringTask = Task {
-            await monitorCaretChanges()
-        }
-        
-        isActive = true
-        logger.info("App coordinator started")
-    }
-    
-    func shutdown() async {
-        logger.info("Shutting down app coordinator")
-        
-        isActive = false
-        monitoringTask?.cancel()
-        
-        await communicationHandler.stopListening()
-        await detector.stopDetection()
-        await renderer.hide()
-        
-        logger.info("App coordinator shutdown complete")
-    }
-    
-    func handleSystemSleep() async {
-        logger.debug("Handling system sleep")
-        await renderer.hide()
-    }
-    
-    func handleSystemWake() async {
-        logger.debug("Handling system wake")
-        
-        if let config = currentConfig {
-            await renderer.show(config: config)
-        }
-    }
-    
-    func handleMemoryPressure() async {
-        logger.warning("Handling memory pressure")
-    }
-    
-    private func monitorCaretChanges() async {
-        for await caretRect in await detector.caretRectPublisher {
-            guard isActive, let config = currentConfig else { continue }
-            
-            if let rect = caretRect {
-                await renderer.updatePosition(rect, config: config)
-            }
-        }
     }
 }

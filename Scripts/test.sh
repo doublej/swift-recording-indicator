@@ -7,7 +7,8 @@ echo "Testing fixed app..."
     sleep 1
     
     echo "show"
-    sleep 5
+    echo "🔴 Red circle should be visible now - check your screen!"
+    sleep 10
     
     echo "hide"
     sleep 1

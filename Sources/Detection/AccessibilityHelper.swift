@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import ApplicationServices
+import ApplicationServices
 import Logging
 
 final class AccessibilityHelper {
