@@ -14,8 +14,20 @@ echo ""
 
 # Clean previous builds
 echo "Cleaning previous builds..."
-rm -rf "$BUILD_DIR"
-rm -rf "$RELEASE_DIR"
+if [ -d "$BUILD_DIR" ]; then
+    echo "Removing .build directory..."
+    rm -rf "$BUILD_DIR" || {
+        echo "Warning: Could not remove .build directory completely"
+        echo "Trying swift package clean..."
+        swift package clean 2>/dev/null || true
+    }
+fi
+
+if [ -d "$RELEASE_DIR" ]; then
+    echo "Removing release directory..."
+    rm -rf "$RELEASE_DIR"
+fi
+
 mkdir -p "$RELEASE_DIR"
 
 cd "$PROJECT_DIR"
