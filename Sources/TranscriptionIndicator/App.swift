@@ -27,8 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func startSimpleApplication() {
         Task { @MainActor in
-            let enhancedProcessor = EnhancedCommandProcessor()
-            let stdinHandler = GenericStdinHandler(processor: enhancedProcessor)
+            let simpleProcessor = SimpleCommandProcessor()
+            let stdinHandler = SimpleStdinHandler(processor: simpleProcessor)
             await stdinHandler.startListening()
         }
     }
