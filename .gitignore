@@ -13,6 +13,10 @@ release/
 # IDE
 .vscode/
 .idea/
+.claude/
+
+# Cache directories
+.repomap.tags.cache.v1/
 
 # Temporary files
 *.tmp
