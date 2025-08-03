@@ -1,5 +1,6 @@
 import Foundation
-import ApplicationServices
+@preconcurrency import ApplicationServices
+@preconcurrency import CoreFoundation
 import CoreGraphics
 import Logging
 import OSLog
@@ -69,8 +70,8 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
         
         logger.info("Stopping accessibility detection")
         
-        await MainActor.run {
-            if let observer = observer {
+        if let observer = observer {
+            await MainActor.run {
                 CFRunLoopRemoveSource(
                     CFRunLoopGetMain(),
                     AXObserverGetRunLoopSource(observer),
@@ -133,7 +134,7 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
                         throw TranscriptionIndicatorError.accessibilityError("Failed to create observer: \(result)")
                     }
                     
-                    self.observer = axObserver
+                    await self.setObserver(axObserver)
                     
                     CFRunLoopAddSource(
                         CFRunLoopGetMain(),
@@ -145,7 +146,7 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
                     let addResult = AXObserverAddNotification(
                         axObserver,
                         systemElement,
-                        kAXFocusedUIElementChangedNotification,
+                        kAXFocusedUIElementChangedNotification as CFString,
                         Unmanaged.passUnretained(self).toOpaque()
                     )
                     
@@ -175,7 +176,7 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
         }
         lastNotificationTime = now
         
-        await detectionQueue.async { [weak self] in
+        detectionQueue.async { [weak self] in
             guard let self = self else { return }
             
             Task {
@@ -187,31 +188,30 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     private func processNotification(element: AXUIElement, notification: CFString) async {
         guard isDetecting else { return }
         
-        do {
-            if await isTextInputElement(element) && !(await isSecureField(element)) {
-                if let caretRect = await extractCaretRect(from: element) {
-                    if caretRect != lastCaretRect {
-                        lastCaretRect = caretRect
-                        caretRectContinuation.yield(caretRect)
-                        
-                        logger.debug("Caret rect detected: \(caretRect.debugDescription)")
-                    }
-                }
-            } else {
-                if lastCaretRect != nil {
-                    lastCaretRect = nil
-                    caretRectContinuation.yield(nil)
+        let isTextInput = await isTextInputElement(element)
+        let isSecure = await isSecureField(element)
+        
+        if isTextInput && !isSecure {
+            if let caretRect = await extractCaretRect(from: element) {
+                if caretRect != lastCaretRect {
+                    lastCaretRect = caretRect
+                    caretRectContinuation.yield(caretRect)
                     
-                    logger.debug("Text input lost")
+                    logger.debug("Caret rect detected: \(caretRect.debugDescription)")
                 }
             }
-        } catch {
-            logger.error("Error processing notification: \(error.localizedDescription)")
+        } else {
+            if lastCaretRect != nil {
+                lastCaretRect = nil
+                caretRectContinuation.yield(nil)
+                
+                logger.debug("Text input lost")
+            }
         }
     }
     
     private func isTextInputElement(_ element: AXUIElement) async -> Bool {
-        guard let role = await getElementAttribute(element, kAXRoleAttribute) as? String else {
+        guard let role = await getElementAttribute(element, kAXRoleAttribute as CFString) as? String else {
             return false
         }
         
@@ -226,7 +226,7 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     }
     
     private func isSecureField(_ element: AXUIElement) async -> Bool {
-        guard let subrole = await getElementAttribute(element, kAXSubroleAttribute) as? String else {
+        guard let subrole = await getElementAttribute(element, kAXSubroleAttribute as CFString) as? String else {
             return false
         }
         
@@ -246,14 +246,14 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     }
     
     private func getBoundsForSelectedRange(_ element: AXUIElement) async -> CGRect? {
-        guard let range = await getElementAttribute(element, kAXSelectedTextRangeAttribute) as CFTypeRef? else {
+        guard let range = await getElementAttribute(element, kAXSelectedTextRangeAttribute as CFString) as CFTypeRef? else {
             return nil
         }
         
         var bounds: CFTypeRef?
         let result = AXUIElementCopyParameterizedAttributeValue(
             element,
-            kAXBoundsForRangeParameterizedAttribute,
+            kAXBoundsForRangeParameterizedAttribute as CFString,
             range,
             &bounds
         )
@@ -273,15 +273,15 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
     }
     
     private func getInsertionPointRect(_ element: AXUIElement) async -> CGRect? {
-        guard let lineNumber = await getElementAttribute(element, kAXInsertionPointLineNumberAttribute) as? Int else {
+        guard let lineNumber = await getElementAttribute(element, kAXInsertionPointLineNumberAttribute as CFString) as? Int else {
             return nil
         }
         
-        return await getElementAttribute(element, kAXFrameAttribute) as? CGRect
+        return await getElementAttribute(element, "AXFrame" as CFString) as? CGRect
     }
     
     private func getElementFrameWithHeuristics(_ element: AXUIElement) async -> CGRect? {
-        guard var frame = await getElementAttribute(element, kAXFrameAttribute) as? CGRect else {
+        guard var frame = await getElementAttribute(element, "AXFrame" as CFString) as? CGRect else {
             return nil
         }
         
@@ -304,6 +304,10 @@ actor AccessibilityTextInputDetector: TextInputDetecting {
                 }
             }
         }
+    }
+    
+    private func setObserver(_ newObserver: AXObserver) {
+        observer = newObserver
     }
     
     deinit {

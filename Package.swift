@@ -24,7 +24,15 @@ let package = Package(
                 "TranscriptionIndicator/App.swift",
                 "Communication/SimpleCommandProcessor.swift",
                 "Communication/SimpleStdinHandler.swift",
-                "Communication/ShapeRenderer.swift"
+                "Communication/GenericStdinHandler.swift",
+                "Communication/EnhancedCommandProcessor.swift",
+                "Communication/ShapeRenderer.swift",
+                "Core/Errors.swift",
+                "Core/Models.swift",
+                "Core/Protocols.swift",
+                "Detection/AccessibilityConstants.swift",
+                "Detection/AccessibilityHelper.swift",
+                "Detection/AccessibilityTextInputDetector.swift"
             ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals"),
