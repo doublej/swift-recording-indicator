@@ -30,6 +30,7 @@ let package = Package(
                 "Core/Errors.swift",
                 "Core/Models.swift",
                 "Core/Protocols.swift",
+                "Core/SingleInstanceManager.swift",
                 "Detection/AccessibilityConstants.swift",
                 "Detection/AccessibilityHelper.swift",
                 "Detection/AccessibilityTextInputDetector.swift"

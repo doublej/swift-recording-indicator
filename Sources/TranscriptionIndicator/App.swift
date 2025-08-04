@@ -7,6 +7,9 @@ import Logging
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let logger = Logger(label: "app.delegate")
     
+    // Reference to the single instance manager for cleanup
+    private var singleInstanceManager: SingleInstanceManager?
+    
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("TranscriptionIndicator starting...")
         
@@ -18,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationWillTerminate(_ notification: Notification) {
         logger.info("TranscriptionIndicator terminating...")
+        singleInstanceManager?.releaseLock()
     }
     
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -31,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let stdinHandler = SimpleStdinHandler(processor: simpleProcessor)
             await stdinHandler.startListening()
         }
+    }
+    
+    /// Sets the single instance manager reference for cleanup
+    func setSingleInstanceManager(_ manager: SingleInstanceManager) {
+        self.singleInstanceManager = manager
     }
     
     private func setupApplication() {

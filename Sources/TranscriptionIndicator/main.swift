@@ -9,6 +9,9 @@ LoggingSystem.bootstrap { label in
 
 let logger = Logger(label: "main")
 
+// Initialize single instance manager
+let singleInstanceManager = SingleInstanceManager()
+
 // Check for required permissions early
 guard AXIsProcessTrusted() else {
     logger.error("Accessibility permission not granted. Please enable accessibility access in System Preferences.")
@@ -30,9 +33,21 @@ guard AXIsProcessTrusted() else {
 
 logger.info("TranscriptionIndicator v1.0.0 starting...")
 
+// Check for single instance enforcement
+if !singleInstanceManager.acquireSingleInstanceLock() {
+    logger.info("Another instance is already running. Sending command and exiting.")
+    
+    // Send the command line arguments to the running instance
+    singleInstanceManager.sendCommandToRunningInstance(CommandLine.arguments)
+    
+    // Exit gracefully
+    exit(0)
+}
+
 // Create and configure the application
 let app = NSApplication.shared
 let delegate = AppDelegate()
+delegate.setSingleInstanceManager(singleInstanceManager)
 app.delegate = delegate
 
 // Ensure we don't show in Dock or Cmd+Tab
@@ -80,6 +95,7 @@ if arguments.contains("--check-permissions") {
 // Handle termination signals gracefully
 signal(SIGTERM) { _ in
     logger.info("SIGTERM received, shutting down gracefully")
+    singleInstanceManager.releaseLock()
     DispatchQueue.main.async {
         NSApplication.shared.terminate(nil)
     }
@@ -87,6 +103,7 @@ signal(SIGTERM) { _ in
 
 signal(SIGINT) { _ in
     logger.info("SIGINT received, shutting down gracefully")
+    singleInstanceManager.releaseLock()
     DispatchQueue.main.async {
         NSApplication.shared.terminate(nil)
     }
