@@ -55,15 +55,12 @@ cp "$PROJECT_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/"
 # Create entitlements for signing
 cp "$PROJECT_DIR/Resources/Entitlements.plist" "$RELEASE_DIR/"
 
-# Copy scripts
-echo "Copying scripts..."
-cp -r "$PROJECT_DIR/Scripts" "$RELEASE_DIR/"
+# Note: Scripts are kept in project directory only, not copied to release
 
 echo ""
 echo "Build completed successfully!"
 echo "Executable: $RELEASE_DIR/TranscriptionIndicator"
 echo "App Bundle: $APP_BUNDLE"
-echo "Scripts: $RELEASE_DIR/Scripts/"
 echo ""
 
 # Run basic tests if requested

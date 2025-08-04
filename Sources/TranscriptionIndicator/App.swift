@@ -6,8 +6,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var stdinHandler: SimpleStdinHandler?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        setupApplication()
-        startStdinHandler()
+        Task { @MainActor in
+            setupApplication()
+            startStdinHandler()
+        }
     }
     
     func applicationWillTerminate(_ notification: Notification) {
@@ -18,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .terminateNow
     }
     
-    private func startStdinHandler() {
+    @MainActor private func startStdinHandler() {
         let processor = SimpleCommandProcessor()
         stdinHandler = SimpleStdinHandler(processor: processor)
         stdinHandler?.startListening()

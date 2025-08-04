@@ -35,6 +35,11 @@ let package = Package(
                 .enableUpcomingFeature("ForwardTrailingClosures"),
                 .enableUpcomingFeature("StrictConcurrency")
             ]
+        ),
+        .testTarget(
+            name: "TranscriptionIndicatorTests",
+            dependencies: ["TranscriptionIndicator"],
+            path: "Tests"
         )
     ]
 )
