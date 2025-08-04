@@ -1,0 +1,15 @@
+# Requirements for TranscriptionIndicator demo script
+# The demo script uses only Python standard library modules:
+# - argparse (command line argument parsing)
+# - asyncio (asynchronous programming)
+# - json (JSON handling, if needed for future enhancements)
+# - subprocess (process management)
+# - sys (system operations)
+# - time (timing operations)
+# - pathlib (path handling)
+# - enum (enumeration support)
+# - typing (type hints)
+
+# No external dependencies required
+# Python 3.7+ recommended for full asyncio support
+# Python 3.8+ recommended for optimal type hint support
